@@ -134,8 +134,18 @@ fun DayRecordScreen(viewModel: DayRecordViewModel) {
                         Text(text = stringResource(R.string.due_date, it), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
                 } else {
-                    insights.nextPeriodDate?.let {
-                        Text(text = stringResource(R.string.next_period, it), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    Column(horizontalAlignment = Alignment.End) {
+                        insights.nextPeriodDate?.let {
+                            Text(text = stringResource(R.string.next_period, it), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
+                        if (insights.periodDelayDays > 0) {
+                            Text(
+                                text = stringResource(R.string.period_delay, insights.periodDelayDays),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }

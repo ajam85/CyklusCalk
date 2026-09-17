@@ -1,9 +1,14 @@
 package com.example.cykluscalk.ui
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.graphics.drawable.Drawable
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.cykluscalk.R
@@ -20,7 +25,9 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
+import java.util.*
 import javax.inject.Inject
 import kotlin.math.ceil
 
@@ -129,7 +136,6 @@ class DayRecordViewModel @Inject constructor(
         
         if (isPreg && concepDateStr != null) {
             val conceptionDate = LocalDate.parse(concepDateStr)
-            // Týdny těhotenství se počítají od LMP (početí + 14 dní)
             val lmp = conceptionDate.minusDays(14)
             val (weeks, days) = CycleCalculator.getPregnancyWeekAndDay(selectedLocalDate, lmp)
             pregWeek = weeks
@@ -217,7 +223,6 @@ class DayRecordViewModel @Inject constructor(
             }
         }
 
-        // Aggregate by month for the year
         val yearTagUsage = mutableMapOf<String, Int>()
         var yearTotalSexCount = 0
         yearRecords.forEach { record ->
@@ -285,6 +290,9 @@ class DayRecordViewModel @Inject constructor(
     val appTheme = settingsRepository.appTheme
     val minTemp = settingsRepository.minTemp
     val maxTemp = settingsRepository.maxTemp
+    val userName = settingsRepository.userName
+    val userBirth = settingsRepository.userBirth
+    val lastReportTitle = settingsRepository.lastReportTitle
 
     fun toggleDarkMode(enabled: Boolean) = settingsRepository.setDarkMode(enabled)
     fun setLanguage(lang: String) = settingsRepository.setLanguage(lang)
@@ -292,9 +300,12 @@ class DayRecordViewModel @Inject constructor(
     fun setTemperatureUnit(unit: String) = settingsRepository.setTemperatureUnit(unit)
     fun setAppTheme(theme: String) = settingsRepository.setAppTheme(theme)
     fun setTempRange(min: Float, max: Float) = settingsRepository.setTempRange(min, max)
+    fun setUserName(name: String) = settingsRepository.setUserName(name)
+    fun setUserBirth(birth: String) = settingsRepository.setUserBirth(birth)
+    fun setLastReportTitle(title: String) = settingsRepository.setLastReportTitle(title)
+    
     fun setPregnancyMode(enabled: Boolean, date: LocalDate? = null) {
         if (!enabled && isPregnancyMode.value) {
-            // Archive current pregnancy before turning off
             viewModelScope.launch {
                 val current = insights.value
                 val record = PregnancyRecord(
@@ -314,14 +325,17 @@ class DayRecordViewModel @Inject constructor(
             settingsRepository.setPregnancyMode(enabled, date?.toString())
         }
     }
+
     fun deletePregnancyFromHistory(record: PregnancyRecord) {
         viewModelScope.launch {
             repository.deletePregnancy(record)
         }
     }
+    
     fun setDoctorDueDate(date: LocalDate?) {
         settingsRepository.setDoctorDueDate(date?.toString())
     }
+    
     fun setConceptionDate(date: LocalDate?) {
         settingsRepository.setConceptionDate(date?.toString())
     }
@@ -353,15 +367,10 @@ class DayRecordViewModel @Inject constructor(
         return try {
             val data = Gson().fromJson(json, BackupData::class.java)
             viewModelScope.launch {
-                // Clear and restore records
                 repository.deleteAllRecords()
                 data.records.forEach { repository.saveRecord(it) }
-                
-                // Clear and restore tags
                 repository.deleteAllTags()
                 data.tags.forEach { repository.addTag(it) }
-                
-                // Restore settings
                 settingsRepository.restoreSettings(data.settings)
             }
             true
@@ -371,8 +380,11 @@ class DayRecordViewModel @Inject constructor(
     }
 
     fun exportPdfReport(
+        context: Context,
         outputStream: OutputStream,
         title: String,
+        userName: String,
+        userBirth: String,
         generatedAtLabel: String,
         tempUnit: String,
         includeMenstruation: Boolean,
@@ -383,6 +395,10 @@ class DayRecordViewModel @Inject constructor(
         includeNotes: Boolean,
         filterMonth: Int?,
         filterYear: Int?,
+        startMonth: Int? = null,
+        startYear: Int? = null,
+        endMonth: Int? = null,
+        endYear: Int? = null,
         footerText: String
     ) {
         val pdfDocument = PdfDocument()
@@ -393,30 +409,70 @@ class DayRecordViewModel @Inject constructor(
         var canvas = page.canvas
 
         val paint = Paint().apply { strokeWidth = 1f }
-        val titlePaint = Paint().apply { textSize = 22f; isFakeBoldText = true }
-        val datePaint = Paint().apply { textSize = 14f; isFakeBoldText = true }
-        val labelPaint = Paint().apply { textSize = 10f; isFakeBoldText = true }
-        val valuePaint = Paint().apply { textSize = 10f }
-        val infoPaint = Paint().apply { textSize = 10f; alpha = 150 }
+        val titlePaint = Paint().apply { textSize = 18f; isFakeBoldText = true; color = Color.BLACK; textAlign = Paint.Align.CENTER }
+        val headerLabelPaint = Paint().apply { textSize = 10f; isFakeBoldText = true; color = Color.DKGRAY }
+        val headerValuePaint = Paint().apply { textSize = 10f; color = Color.BLACK }
+        val tableHeaderPaint = Paint().apply { textSize = 9f; isFakeBoldText = true; color = Color.WHITE }
+        val tableRowPaint = Paint().apply { textSize = 8f; color = Color.BLACK }
+        val datePaint = Paint().apply { textSize = 9f; isFakeBoldText = true; color = Color.BLACK }
         val footerPaint = Paint().apply { textSize = 8f; alpha = 120 }
 
-        var y = 50f
-        canvas.drawText(title, 40f, y, titlePaint)
+        // --- Draw Logo & Title (Centered on separate lines) ---
+        var currentHeaderY = 50f
+        try {
+            val logoDrawable = context.packageManager.getApplicationIcon(context.packageName)
+            val logoSize = 48
+            val centerX = pageWidth / 2
+            logoDrawable.setBounds(centerX - (logoSize / 2), currentHeaderY.toInt(), centerX + (logoSize / 2), (currentHeaderY + logoSize).toInt())
+            logoDrawable.draw(canvas)
+            currentHeaderY += (logoSize + 20f)
+        } catch (e: Exception) {
+            currentHeaderY += 10f
+        }
         
-        y += 30f
-        val periodText = if (filterMonth != null && filterYear != null) "$filterMonth/$filterYear" else if (filterYear != null) "$filterYear" else "Celá historie"
-        canvas.drawText("Období: $periodText", 40f, y, valuePaint)
-        y += 40f
+        canvas.drawText(title, (pageWidth / 2).toFloat(), currentHeaderY + 15f, titlePaint)
+        currentHeaderY += 45f
+        
+        // Patient Info Box (Neutral Grey)
+        canvas.drawRect(40f, currentHeaderY - 15f, 555f, currentHeaderY + 35f, Paint().apply { color = Color.parseColor("#EEEEEE") })
+        
+        canvas.drawText("JMÉNO:", 50f, currentHeaderY, headerLabelPaint)
+        canvas.drawText(userName.ifBlank { "---" }, 100f, currentHeaderY, headerValuePaint)
+        canvas.drawText("DATUM NAROZENÍ:", 320f, currentHeaderY, headerLabelPaint)
+        canvas.drawText(userBirth.ifBlank { "---" }, 450f, currentHeaderY, headerValuePaint)
+        
+        currentHeaderY += 20f
+        val periodText = if (startMonth != null && startYear != null && endMonth != null && endYear != null) {
+            "$startMonth/$startYear – $endMonth/$endYear"
+        } else if (filterMonth != null && filterYear != null) {
+            "$filterMonth/$filterYear"
+        } else if (filterYear != null) {
+            "$filterYear"
+        } else {
+            "Celá historie"
+        }
+        canvas.drawText("OBDOBÍ:", 50f, currentHeaderY, headerLabelPaint)
+        canvas.drawText(periodText, 100f, currentHeaderY, headerValuePaint)
+        
+        currentHeaderY += 45f
+        var y = currentHeaderY
 
         val allRecs = allRecords.value
         val filteredRecords = allRecs.filter { rec ->
             val date = LocalDate.parse(rec.date)
-            val monthMatch = filterMonth == null || date.monthValue == filterMonth
-            val yearMatch = filterYear == null || date.year == filterYear
-            monthMatch && yearMatch
-        }.sortedBy { it.date } // Chronological for graphs
+            if (startMonth != null && startYear != null && endMonth != null && endYear != null) {
+                val currentYM = YearMonth.of(date.year, date.monthValue)
+                val startYM = YearMonth.of(startYear, startMonth)
+                val endYM = YearMonth.of(endYear, endMonth)
+                !currentYM.isBefore(startYM) && !currentYM.isAfter(endYM)
+            } else {
+                val monthMatch = filterMonth == null || date.monthValue == filterMonth
+                val yearMatch = filterYear == null || date.year == filterYear
+                monthMatch && yearMatch
+            }
+        }.sortedBy { it.date }
 
-        // --- DRAW CHARTS IF APPLICABLE ---
+        // --- DRAW CHARTS ---
         if (includeTemperature && filteredRecords.any { (it.basalTemperature ?: 0.0) > 0.0 }) {
             val tempData = filteredRecords.map { LocalDate.parse(it.date).dayOfMonth to (it.basalTemperature ?: 0.0) }
             y = drawPdfChart(canvas, "Graf bazální teploty", tempData, 35.0, 38.0, y)
@@ -432,84 +488,99 @@ class DayRecordViewModel @Inject constructor(
             y += 40f
         }
 
+        // --- TABLE HEADER ---
+        if (y > 700f) {
+            pdfDocument.finishPage(page); page = pdfDocument.startPage(pageInfo); canvas = page.canvas; y = 50f
+        }
+        
+        val colWidths = floatArrayOf(90f, 50f, 50f, 130f, 235f) // Datum, Temp, Váha, Štítky, Poznámka
+        val startX = 40f
+        
+        canvas.drawRect(startX, y - 12f, 555f, y + 8f, Paint().apply { color = Color.BLACK })
+        var tableX = startX + 5f
+        val headers = arrayOf("Datum", "Tepl.", "Váha", "Štítky", "Poznámka")
+        headers.forEachIndexed { i, h ->
+            canvas.drawText(h, tableX, y, tableHeaderPaint)
+            tableX += colWidths[i]
+        }
+        y += 20f
+
         // --- DATA ROWS ---
         val tagsDef = allTags.value
-        filteredRecords.forEach { record -> // Chronological order 1-31
+        var lastMonthYear: String? = null
+
+        filteredRecords.forEachIndexed { index, record ->
             val dateObj = LocalDate.parse(record.date)
+            val currentMonthYear = dateObj.month.getDisplayName(TextStyle.FULL, Locale("cs")).replaceFirstChar { it.uppercase() } + " " + dateObj.year
+
+            // Draw Month Separator
+            if (currentMonthYear != lastMonthYear) {
+                if (y > 750f) {
+                    pdfDocument.finishPage(page); page = pdfDocument.startPage(pageInfo); canvas = page.canvas; y = 50f
+                }
+                canvas.drawRect(startX, y - 12f, 555f, y + 8f, Paint().apply { color = Color.parseColor("#EEEEEE") })
+                canvas.drawText(currentMonthYear, pageWidth / 2f, y, Paint().apply { 
+                    textSize = 10f; isFakeBoldText = true; color = Color.BLACK; textAlign = Paint.Align.CENTER 
+                })
+                y += 20f
+                lastMonthYear = currentMonthYear
+            }
+
             val sympTags = tagsDef.filter { it.category == "Symptom" }.map { it.name }
             val pregTags = tagsDef.filter { it.category == "Pregnancy" }.map { it.name }
-            val sexTags = tagsDef.filter { it.category == "Sex" }.map { it.name }
 
-            val hasMenses = includeMenstruation && record.tags.contains(CycleCalculator.TAG_PERIOD)
-            val hasSymp = includeSymptoms && record.tags.any { it in sympTags }
-            val hasTemp = includeTemperature && (record.basalTemperature ?: 0.0) > 0.0
-            val hasPreg = includePregnancy && (record.tags.any { it in pregTags } || (record.bodyWeight ?: 0.0) > 0.0)
-            val hasSex = includeSex && (record.sexFrequency > 0 || record.tags.any { it in sexTags })
-            val hasNote = includeNotes && record.note.isNotBlank()
-
-            if (!hasMenses && !hasSymp && !hasTemp && !hasPreg && !hasSex && !hasNote) return@forEach
-
-            if (y > 750f) {
-                pdfDocument.finishPage(page)
-                page = pdfDocument.startPage(pageInfo)
-                canvas = page.canvas
-                y = 50f
+            val activeTagsList = mutableListOf<String>()
+            if (includeMenstruation && record.tags.contains(CycleCalculator.TAG_PERIOD)) {
+                activeTagsList.add(context.getString(R.string.menstruation))
             }
-
-            canvas.drawText(dateObj.format(DateTimeFormatter.ofPattern("EEEE, dd.MM.yyyy")), 40f, y, datePaint)
-            y += 15f
-            canvas.drawLine(40f, y, 555f, y, paint.apply { alpha = 80 })
-            y += 20f
-
-            if (hasTemp) {
-                drawDataRow(canvas, "Teplota:", "${record.basalTemperature} $tempUnit", 40f, y, labelPaint, valuePaint)
-                y += 15f
+            if (includeSymptoms) {
+                activeTagsList.addAll(record.tags.filter { it in sympTags && it != CycleCalculator.TAG_PERIOD })
             }
-            if (hasPreg && (record.bodyWeight ?: 0.0) > 0.0) {
-                drawDataRow(canvas, "Váha:", "${record.bodyWeight} kg", 40f, y, labelPaint, valuePaint)
-                y += 15f
+            if (includePregnancy) {
+                activeTagsList.addAll(record.tags.filter { it in pregTags })
             }
-            if (hasSex && record.sexFrequency > 0) {
-                drawDataRow(canvas, "Pohlavní styk:", "${record.sexFrequency}x", 40f, y, labelPaint, valuePaint)
-                y += 15f
+            
+            val tagsText = activeTagsList.distinct().joinToString(", ")
+            val noteText = if (includeNotes) record.note else ""
+            
+            // Calculate multi-line height
+            val tagsLines = calculateTextLines(tagsText, colWidths[3] - 10f, tableRowPaint)
+            val noteLines = calculateTextLines(noteText, colWidths[4] - 10f, tableRowPaint)
+            val rowHeight = (maxOf(tagsLines.size, noteLines.size, 1) * 12f).coerceAtLeast(18f)
+
+            if (y + rowHeight > 800f) {
+                pdfDocument.finishPage(page); page = pdfDocument.startPage(pageInfo); canvas = page.canvas; y = 50f
+                canvas.drawRect(startX, y - 12f, 555f, y + 8f, Paint().apply { color = Color.BLACK })
+                var tempX = startX + 5f
+                headers.forEachIndexed { i, h -> canvas.drawText(h, tempX, y, tableHeaderPaint); tempX += colWidths[i] }
+                y += 20f
             }
 
-            val activeTags = record.tags
-            if (hasMenses && activeTags.contains(CycleCalculator.TAG_PERIOD)) {
-                drawDataRow(canvas, "Menstruace:", "Ano", 40f, y, labelPaint, valuePaint)
-                y += 15f
+            if (index % 2 == 1) {
+                canvas.drawRect(startX, y - 10f, 555f, y + rowHeight - 10f, Paint().apply { color = Color.parseColor("#F2F2F2") })
             }
-            if (hasSymp) {
-                val daySymps = activeTags.filter { it in sympTags }
-                if (daySymps.isNotEmpty()) {
-                    drawDataRow(canvas, "Příznaky:", daySymps.joinToString(", "), 40f, y, labelPaint, valuePaint)
-                    y += 15f
-                }
-            }
-            if (hasPreg) {
-                val dayPreg = activeTags.filter { it in pregTags }
-                if (dayPreg.isNotEmpty()) {
-                    drawDataRow(canvas, "Těhotenství:", dayPreg.joinToString(", "), 40f, y, labelPaint, valuePaint)
-                    y += 15f
-                }
-            }
-            if (hasSex) {
-                val daySexTags = activeTags.filter { it in sexTags }
-                if (daySexTags.isNotEmpty()) {
-                    drawDataRow(canvas, "Aktivita:", daySexTags.joinToString(", "), 40f, y, labelPaint, valuePaint)
-                    y += 15f
-                }
-            }
-            if (hasNote) {
-                canvas.drawText("Poznámka:", 40f, y, labelPaint)
-                canvas.drawText(record.note, 120f, y, valuePaint)
-                y += 15f
-            }
-            y += 15f
+            
+            // Draw row cells
+            var rowX = startX + 5f
+            // Date
+            canvas.drawText(dateObj.format(DateTimeFormatter.ofPattern("dd.MM (EEE)")), rowX, y, datePaint)
+            rowX += colWidths[0]
+            // Temp
+            canvas.drawText(if (includeTemperature && (record.basalTemperature ?: 0.0) > 0.0) "${record.basalTemperature}" else "-", rowX, y, tableRowPaint)
+            rowX += colWidths[1]
+            // Weight
+            canvas.drawText(if (includePregnancy && (record.bodyWeight ?: 0.0) > 0.0) "${record.bodyWeight}" else "-", rowX, y, tableRowPaint)
+            rowX += colWidths[2]
+            // Tags (wrapped)
+            drawMultilineText(canvas, tagsLines, rowX, y, tableRowPaint)
+            rowX += colWidths[3]
+            // Note (wrapped)
+            drawMultilineText(canvas, noteLines, rowX, y, tableRowPaint)
+            
+            y += rowHeight
         }
 
-        // Draw Footer on the last page
-        canvas.drawText(footerText, 40f, pageHeight - 30f, footerPaint)
+        canvas.drawText(footerText + " | " + generatedAtLabel + ": " + LocalDate.now().format(uiFormatter), 40f, pageHeight - 30f, footerPaint)
         
         pdfDocument.finishPage(page)
         pdfDocument.writeTo(outputStream)
@@ -518,9 +589,7 @@ class DayRecordViewModel @Inject constructor(
 
     private fun drawPdfChart(canvas: Canvas, title: String, data: List<Pair<Int, Double>>, minV: Double, maxV: Double, startY: Float): Float {
         var currentY = startY
-        if (currentY + 150f > 800f) {
-            return currentY
-        }
+        if (currentY + 150f > 800f) return currentY
 
         val paint = Paint().apply { textSize = 10f; isFakeBoldText = true }
         canvas.drawText(title, 40f, currentY, paint)
@@ -531,12 +600,10 @@ class DayRecordViewModel @Inject constructor(
         val left = 60f
         val bottom = currentY + chartHeight
         
-        // Axis
         val axisPaint = Paint().apply { strokeWidth = 1f; color = Color.BLACK }
         canvas.drawLine(left, currentY, left, bottom, axisPaint)
         canvas.drawLine(left, bottom, left + chartWidth, bottom, axisPaint)
         
-        // Draw day numbers on X-axis (every 5 days)
         val axisLabelPaint = Paint().apply { textSize = 7f; color = Color.DKGRAY; textAlign = Paint.Align.CENTER }
         val maxDay = data.maxOfOrNull { it.first } ?: 31
         val stepX = chartWidth / maxDay.coerceAtLeast(1)
@@ -548,10 +615,9 @@ class DayRecordViewModel @Inject constructor(
             }
         }
 
-        // Data line
         val filteredPoints = data.filter { it.second > 0 }
         if (filteredPoints.isNotEmpty()) {
-            val pointPaint = Paint().apply { color = Color.BLUE; strokeWidth = 2f; style = Paint.Style.STROKE }
+            val pointPaint = Paint().apply { color = Color.BLACK; strokeWidth = 2f; style = Paint.Style.STROKE }
             val valueTextPaint = Paint().apply { textSize = 7f; color = Color.BLACK; textAlign = Paint.Align.CENTER }
             
             var lastX = -1f
@@ -566,23 +632,15 @@ class DayRecordViewModel @Inject constructor(
                     canvas.drawCircle(x, y, 2f, pointPaint)
                     canvas.drawText("%.1f".format(value), x, y - 5f, valueTextPaint)
 
-                    if (lastX >= 0) {
-                        canvas.drawLine(lastX, lastY, x, y, pointPaint)
-                    }
+                    if (lastX >= 0) canvas.drawLine(lastX, lastY, x, y, pointPaint)
                     lastX = x
                     lastY = y
                 } else {
-                    lastX = -1f // Gap
+                    lastX = -1f
                 }
             }
         }
-        
         return bottom + 30f
-    }
-
-    private fun drawDataRow(canvas: Canvas, label: String, value: String, x: Float, y: Float, lPaint: Paint, vPaint: Paint) {
-        canvas.drawText(label, x, y, lPaint)
-        canvas.drawText(value, x + 80f, y, vPaint)
     }
 
     init {
@@ -592,7 +650,6 @@ class DayRecordViewModel @Inject constructor(
                     val defaultSymptoms = listOf("Bolest", "Únava", "Stres", "PMS", "Sport")
                     val defaultSex = listOf("Pohlavní styk", "Chráněný", "Nechráněný", "Snažení")
                     val defaultPregnancy = listOf("Pohyby plodu", "Nevolnost", "Otoky", "Tvrdnutí břicha")
-                    
                     defaultSymptoms.forEach { repository.addTag(TagDefinition(it, "Symptom")) }
                     defaultSex.forEach { repository.addTag(TagDefinition(it, "Sex")) }
                     defaultPregnancy.forEach { repository.addTag(TagDefinition(it, "Pregnancy")) }
@@ -666,10 +723,8 @@ class DayRecordViewModel @Inject constructor(
             val currentTags = currentRecord.value?.tags ?: emptyList()
             val isAdding = !currentTags.contains(tagName)
             val newTags = if (isAdding) currentTags + tagName else currentTags - tagName
-            
             val record = currentRecord.value?.copy(tags = newTags)
                 ?: DayRecord(date = _selectedDate.value, tags = newTags)
-            
             repository.saveRecord(record)
 
             if (tagName == CycleCalculator.TAG_PERIOD && isAdding) {
@@ -689,15 +744,11 @@ class DayRecordViewModel @Inject constructor(
     }
 
     fun addNewTagDefinition(name: String, category: String) {
-        viewModelScope.launch {
-            repository.addTag(TagDefinition(name = name, category = category))
-        }
+        viewModelScope.launch { repository.addTag(TagDefinition(name = name, category = category)) }
     }
 
     fun deleteTagDefinition(tag: TagDefinition) {
-        viewModelScope.launch {
-            repository.deleteTag(tag)
-        }
+        viewModelScope.launch { repository.deleteTag(tag) }
     }
 
     private suspend fun fillMenstruationGaps(newDate: LocalDate) {
@@ -723,6 +774,33 @@ class DayRecordViewModel @Inject constructor(
                 repository.saveRecord(DayRecord(date = dateStr, note = existing?.note ?: "", tags = updatedTags, sexFrequency = existing?.sexFrequency ?: 0, sexTimes = existing?.sexTimes ?: emptyList()))
             }
             current = current.plusDays(1)
+        }
+    }
+
+    private fun calculateTextLines(text: String, maxWidth: Float, paint: Paint): List<String> {
+        if (text.isEmpty()) return emptyList()
+        val words = text.split(" ")
+        val lines = mutableListOf<String>()
+        var currentLine = StringBuilder()
+
+        for (word in words) {
+            val testLine = if (currentLine.isEmpty()) word else "${currentLine} $word"
+            if (paint.measureText(testLine) <= maxWidth) {
+                currentLine.append(if (currentLine.isEmpty()) word else " $word")
+            } else {
+                if (currentLine.isNotEmpty()) lines.add(currentLine.toString())
+                currentLine = StringBuilder(word)
+            }
+        }
+        if (currentLine.isNotEmpty()) lines.add(currentLine.toString())
+        return lines
+    }
+
+    private fun drawMultilineText(canvas: Canvas, lines: List<String>, x: Float, y: Float, paint: Paint) {
+        var currentY = y
+        lines.forEach { line ->
+            canvas.drawText(line, x, currentY, paint)
+            currentY += 12f
         }
     }
 }

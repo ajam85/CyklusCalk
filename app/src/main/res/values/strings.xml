@@ -92,7 +92,7 @@
     <string name="year_label">Year</string>
     <string name="month_label">Month</string>
     <string name="pdf_report_title">Cycle Report</string>
-    <string name="pdf_generated_at">Generated at: %s</string>
+    <string name="pdf_generated_at">Generated on</string>
     <string name="pdf_date">Date</string>
     <string name="pdf_temp">Temp</string>
     <string name="pdf_weight">Weight</string>
@@ -105,6 +105,8 @@
     <string name="btt_guide_content">Why measure BBT?\nYour resting body temperature changes during the cycle. By recording BBT, the app identifies when ovulation occurred. Proper morning routine is key for accuracy.\n\nEvening Preparation\nThermometer at hand: Place your basal thermometer (showing 2 decimal places) right next to your bed.\nRestful sleep: You need at least 3 to 4 hours of uninterrupted sleep before measuring.\n\nHow to Measure Correctly\nMeasure immediately upon waking: Do not get up, talk, yawn, or drink. Any activity warms muscles and skews results.\nKeep the same time: Measure at the same time every day. Maximum allowed deviation is 30 minutes.\nDo not change measurement site: Choose one site (mouth under tongue, vagina, or rectum) and use it throughout the cycle.\n\nRecording in the App\nEnter the value into the app immediately after measuring.\nUse notes. If there is a problem with your morning routine (e.g., you had to get out of bed at night) or external factors (illness, alcohol, stress, travel), mark it. This will help explain any temperature fluctuations.\n\nHow to Recognize Ovulation?\nBefore ovulation: Temperature stays lower (usually 36.1–36.4°C).\nAfter ovulation: A jump occurs – temperature rises by at least 0.2°C and stays high until the next period.\nNo need to calculate yourself; the app will evaluate data and mark the ovulation shift in the chart.</string>
     <string name="export_data">Export Data</string>
     <string name="pdf_header_title">Report Header</string>
+    <string name="pdf_user_name">Full Name</string>
+    <string name="pdf_user_birth">Date of Birth</string>
     <string name="pdf_footer_note">Created with CyklusCalk app</string>
     <string name="app_version">Version 1.0.14</string>
     <string name="developer_info">Developed with active AI collaboration</string>

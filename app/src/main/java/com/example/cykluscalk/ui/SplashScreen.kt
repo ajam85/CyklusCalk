@@ -40,9 +40,8 @@ fun SplashScreen(onTimeout: () -> Unit) {
             painter = painterResource(id = R.drawable.ic_app_logo),
             contentDescription = null,
             modifier = Modifier
-                .size(160.dp)
-                .scale(scale),
-            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
+                .size(200.dp)
+                .scale(scale)
         )
     }
 }

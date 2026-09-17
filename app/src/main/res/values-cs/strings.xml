@@ -89,7 +89,7 @@
     <string name="year_label">Rok</string>
     <string name="month_label">Měsíc</string>
     <string name="pdf_report_title">Zpráva o cyklu</string>
-    <string name="pdf_generated_at">Vytvořeno dne: %s</string>
+    <string name="pdf_generated_at">Vytvořeno dne</string>
     <string name="pdf_date">Datum</string>
     <string name="pdf_temp">Tepl.</string>
     <string name="pdf_weight">Váha</string>
@@ -105,6 +105,8 @@
     <string name="weight_unit">kg</string>
     <string name="export_data">Export dat</string>
     <string name="pdf_header_title">Nadpis zprávy</string>
+    <string name="pdf_user_name">Jméno a příjmení</string>
+    <string name="pdf_user_birth">Datum narození</string>
     <string name="pdf_footer_note">Vytvořeno aplikací CyklusCalk</string>
     <string name="app_version">Verze 1.0.14</string>
     <string name="developer_info">Vyvíjeno v aktivní spolupráci s AI</string>
@@ -131,4 +133,6 @@
     <string name="milestone_name_selected">Výběr jména</string>
     <string name="milestone_hospital_bag">Sbalená taška do porodnice</string>
     <string name="milestone_birth">Porod</string>
+    <string name="period_delay">Zpoždění: %d dní</string>
+    <string name="period_delay_info">Menstruace má zpoždění %d dní.</string>
 </resources>

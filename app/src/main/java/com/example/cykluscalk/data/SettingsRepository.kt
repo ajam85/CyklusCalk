@@ -47,6 +47,15 @@ class SettingsRepository @Inject constructor(
     private val _pregnancyMilestones = MutableStateFlow(prefs.getString("pregnancy_milestones", "{}") ?: "{}")
     val pregnancyMilestones: StateFlow<String> = _pregnancyMilestones
 
+    private val _userName = MutableStateFlow(prefs.getString("user_name", "") ?: "")
+    val userName: StateFlow<String> = _userName
+
+    private val _userBirth = MutableStateFlow(prefs.getString("user_birth", "") ?: "")
+    val userBirth: StateFlow<String> = _userBirth
+
+    private val _lastReportTitle = MutableStateFlow(prefs.getString("last_report_title", "") ?: "")
+    val lastReportTitle: StateFlow<String> = _lastReportTitle
+
     fun setDarkMode(enabled: Boolean) {
         prefs.edit().putBoolean("dark_mode", enabled).apply()
         _isDarkMode.value = enabled
@@ -99,6 +108,21 @@ class SettingsRepository @Inject constructor(
         _pregnancyMilestones.value = milestonesJson
     }
 
+    fun setUserName(name: String) {
+        prefs.edit().putString("user_name", name).apply()
+        _userName.value = name
+    }
+
+    fun setUserBirth(birth: String) {
+        prefs.edit().putString("user_birth", birth).apply()
+        _userBirth.value = birth
+    }
+
+    fun setLastReportTitle(title: String) {
+        prefs.edit().putString("last_report_title", title).apply()
+        _lastReportTitle.value = title
+    }
+
     fun clearCurrentPregnancy() {
         prefs.edit()
             .putBoolean("pregnancy_mode", false)
@@ -138,5 +162,8 @@ class SettingsRepository @Inject constructor(
         _conceptionDate.value = prefs.getString("conception_date", null)
         _doctorDueDate.value = prefs.getString("doctor_due_date", null)
         _pregnancyMilestones.value = prefs.getString("pregnancy_milestones", "{}") ?: "{}"
+        _userName.value = prefs.getString("user_name", "") ?: ""
+        _userBirth.value = prefs.getString("user_birth", "") ?: ""
+        _lastReportTitle.value = prefs.getString("last_report_title", "") ?: ""
     }
 }
